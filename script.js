@@ -23,8 +23,31 @@ const OPENMETEO_PARAMS =
     "wind_speed_80m,wind_direction_80m" +
     "&models=gfs_seamless&timezone=auto&forecast_hours=24&past_hours=24";
 
-// ── Aviation Weather Center API (NOAA/NWS – free, no key) ──────────────────
-const AWC_API = "https://aviationweather.gov/api/data/airport";
+// ── Local airport database (ICAO -> coordinates/name) ──────────────────────
+// Add more airports here as needed. Keeping this local avoids CORS issues
+// when the app is opened directly from disk or a simple local server.
+const AIRPORTS = {
+    SBGR: { name: "São Paulo/Guarulhos – Governador André Franco Montoro", lat: -23.4356, lon: -46.4731 },
+    SBSP: { name: "São Paulo/Congonhas – Deputado Freitas Nobre", lat: -23.6261, lon: -46.6564 },
+    SBBE: { name: "Belém/Val-de-Cans – Júlio Cezar Ribeiro", lat: -1.3792, lon: -48.4763 },
+    SBRJ: { name: "Rio de Janeiro/Santos Dumont", lat: -22.9104, lon: -43.1631 },
+    SBCF: { name: "Belo Horizonte/Confins – Tancredo Neves", lat: -19.6337, lon: -43.9688 },
+    SBGL: { name: "Rio de Janeiro/Galeão – Tom Jobim", lat: -22.8090, lon: -43.2506 },
+    SBKP: { name: "Campinas/Viracopos", lat: -23.0074, lon: -47.1345 },
+    SBRF: { name: "Recife/Guararapes – Gilberto Freyre", lat: -8.1265, lon: -34.9236 },
+    SBSV: { name: "Salvador/Deputado Luís Eduardo Magalhães", lat: -12.9086, lon: -38.3225 },
+    SBPA: { name: "Porto Alegre/Salgado Filho", lat: -29.9944, lon: -51.1714 },
+    SBFZ: { name: "Fortaleza/Pinto Martins", lat: -3.7763, lon: -38.5326 },
+    SBRB: { name: "Rio Branco/Plácido de Castro", lat: -9.8689, lon: -67.8981 },
+    SBEG: { name: "Manaus/Eduardo Gomes", lat: -3.0386, lon: -60.0497 },
+    SBCT: { name: "Curitiba/Afonso Pena", lat: -25.5285, lon: -49.1758 },
+    EDDF: { name: "Frankfurt Airport", lat: 50.0379, lon: 8.5622 },
+    EGLL: { name: "London Heathrow Airport", lat: 51.4700, lon: -0.4543 },
+    LFPG: { name: "Paris Charles de Gaulle Airport", lat: 49.0097, lon: 2.5479 },
+    LEMD: { name: "Adolfo Suárez Madrid–Barajas Airport", lat: 40.4719, lon: -3.5626 },
+    KJFK: { name: "John F. Kennedy International Airport", lat: 40.6413, lon: -73.7781 },
+    KMIA: { name: "Miami International Airport", lat: 25.7959, lon: -80.2870 }
+};
 
 // ── WMO weather code descriptions (Portuguese) ─────────────────────────────
 const WEATHER_CODE_PT = {
@@ -130,7 +153,7 @@ const WEATHER_CODE_PT = {
     "99": "Trovoada forte com granizo"
 };
 
-// ── Initialise UI ───────────────────────────────────────────────────────────
+// ── Initialise UI ──────────────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", () => {
     const btn   = document.getElementById("search-btn");
     const input = document.getElementById("airport-input");
@@ -186,33 +209,24 @@ async function loadAirports(codes) {
     );
 }
 
-// ── Fetch airport info + weather, then build table ─────────────────────────
+// ── Resolve local airport info + weather, then build table ──────────────────
 async function fetchAirportAndTable(icao) {
-    // 1. Resolve coordinates via Aviation Weather Center API
-    const airportUrl = `${AWC_API}?ids=${encodeURIComponent(icao)}&format=json`;
-    let airportData;
-    try {
-        const resp = await fetch(airportUrl);
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        airportData = await resp.json();
-    } catch (e) {
-        throw new Error(`Falha ao consultar dados do aeroporto ${icao}: ${e.message}`);
+    const airport = AIRPORTS[icao];
+
+    if (!airport) {
+        throw new Error(
+            `Aeroporto "${icao}" não encontrado no banco local. ` +
+            `Adicione o ICAO no objeto AIRPORTS em script.js.`
+        );
     }
 
-    if (!Array.isArray(airportData) || airportData.length === 0) {
-        throw new Error(`Aeroporto "${icao}" não encontrado. Verifique o código ICAO.`);
-    }
-
-    const airport = airportData[0];
-    const lat  = airport.lat;
-    const lon  = airport.lon;
-    const name = airport.name || icao;
+    const { lat, lon, name } = airport;
 
     if (lat == null || lon == null) {
         throw new Error(`Coordenadas não disponíveis para ${icao}.`);
     }
 
-    // 2. Fetch weather from Open-Meteo
+    // Fetch weather from Open-Meteo
     const weatherUrl = `${OPENMETEO_BASE}?latitude=${lat}&longitude=${lon}&${OPENMETEO_PARAMS}`;
     let weatherData;
     try {
@@ -324,7 +338,7 @@ function makeTableSection(data, icao, airportName) {
     return section;
 }
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
+// ── Helpers ────────────────────────────────────────────────────────────────
 
 /**
  * Returns the current local time at a location given its UTC offset (seconds),
